@@ -1,1 +1,1 @@
-streamlit , pandas , numpy , scikit-learn , pydeck , requests , shapely
+streamlit , pandas , numpy , scikit-learn , pydeck , requests , shapely 
