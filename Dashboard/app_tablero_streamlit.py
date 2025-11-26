@@ -119,16 +119,17 @@ def cargar_y_preprocesar_datos_api():
             "extract(year from fecha_hecho) as anio",
             "extract(month from fecha_hecho) as mes",
         ]
-        group_parts = ["MUNICIPIO", "anio", "mes"]
+        group_parts_expr = ["upper(municipio)", "extract(year from fecha_hecho)", "extract(month from fecha_hecho)"]
         if tipo_col:
             select_parts.append(f"{tipo_col} as tipo_delito")
-            group_parts.append("tipo_delito")
+            group_parts_expr.append(f"{tipo_col}")
         select = ",".join(select_parts)
-        group = ",".join(group_parts)
+        group = ",".join(group_parts_expr)
         where = "upper(departamento)='SANTANDER'"
-        url = f"{BASE_URL}{recurso_id}.json?$select={select}&$where={where}&$group={group}&$limit=50000"
+        url = f"{BASE_URL}{recurso_id}.json"
         try:
-            resp = requests.get(url, timeout=30, headers=headers)
+            params = {"$select": select, "$where": where, "$group": group, "$limit": 50000}
+            resp = requests.get(url, timeout=30, headers=headers, params=params)
             resp.raise_for_status()
             data = resp.json()
             df = pd.DataFrame(data)
@@ -154,6 +155,13 @@ def cargar_y_preprocesar_datos_api():
     delitos_sex = cargar_api_agrupada(RECURSO_SEXUAL_ID, tipo_col='delito')
     hurto = cargar_api_agrupada(RECURSO_HURTO_ID, tipo_col='tipo_de_hurto')
     violencia = cargar_api_agrupada(RECURSO_VIOLENCIA_ID, tipo_col=None)
+
+    if delitos_sex is None or delitos_sex.empty:
+        delitos_sex = cargar_datos_desde_api_all(RECURSO_SEXUAL_ID)
+    if hurto is None or hurto.empty:
+        hurto = cargar_datos_desde_api_all(RECURSO_HURTO_ID)
+    if violencia is None or violencia.empty:
+        violencia = cargar_datos_desde_api_all(RECURSO_VIOLENCIA_ID)
 
     if delitos_sex is not None and not delitos_sex.empty:
         delitos_sex['fuente'] = 'delitos_sexuales'
