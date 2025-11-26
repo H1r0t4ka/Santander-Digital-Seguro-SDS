@@ -104,30 +104,67 @@ def cargar_datos_desde_api_all(recurso_id, page_size=50000, max_pages=500):
 
 @st.cache_data
 def cargar_y_preprocesar_datos_api():
-    delitos_sex = cargar_datos_desde_api_all(RECURSO_SEXUAL_ID)
-    hurto = cargar_datos_desde_api_all(RECURSO_HURTO_ID)
-    violencia = cargar_datos_desde_api_all(RECURSO_VIOLENCIA_ID)
+    def cargar_api_agrupada(recurso_id, tipo_col=None):
+        headers = {}
+        try:
+            token = st.secrets.get('SOCRATA_APP_TOKEN', None)
+        except Exception:
+            token = os.getenv('SOCRATA_APP_TOKEN')
+        if token:
+            headers['X-App-Token'] = token
+
+        select_parts = [
+            "upper(municipio) as MUNICIPIO",
+            "sum(cast(cantidad as integer)) as CANTIDAD",
+            "extract(year from fecha_hecho) as anio",
+            "extract(month from fecha_hecho) as mes",
+        ]
+        group_parts = ["MUNICIPIO", "anio", "mes"]
+        if tipo_col:
+            select_parts.append(f"{tipo_col} as tipo_delito")
+            group_parts.append("tipo_delito")
+        select = ",".join(select_parts)
+        group = ",".join(group_parts)
+        where = "upper(departamento)='SANTANDER'"
+        url = f"{BASE_URL}{recurso_id}.json?$select={select}&$where={where}&$group={group}&$limit=50000"
+        try:
+            resp = requests.get(url, timeout=30, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            df = pd.DataFrame(data)
+        except Exception:
+            df = pd.DataFrame()
+
+        if df.empty:
+            return df
+        if 'MUNICIPIO' in df.columns:
+            df['MUNICIPIO'] = (
+                fix_mojibake_series(df['MUNICIPIO'].astype(str))
+                .str.strip()
+                .str.upper()
+                .str.replace(r"\s+\(CT\)$", "", regex=True)
+            )
+        for c in ['CANTIDAD', 'anio', 'mes']:
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0).astype(int)
+        if 'tipo_delito' in df.columns:
+            df['tipo_delito'] = fix_mojibake_series(df['tipo_delito'])
+        return df
+
+    delitos_sex = cargar_api_agrupada(RECURSO_SEXUAL_ID, tipo_col='delito')
+    hurto = cargar_api_agrupada(RECURSO_HURTO_ID, tipo_col='tipo_de_hurto')
+    violencia = cargar_api_agrupada(RECURSO_VIOLENCIA_ID, tipo_col=None)
+
+    if delitos_sex is not None and not delitos_sex.empty:
+        delitos_sex['fuente'] = 'delitos_sexuales'
+    if hurto is not None and not hurto.empty:
+        hurto['fuente'] = 'hurto'
+    if violencia is not None and not violencia.empty:
+        violencia['fuente'] = 'violencia_intrafamiliar'
 
     for df in [delitos_sex, hurto, violencia]:
-        if df is None or df.empty:
-            continue
-        # normalizar columnas tipo departamento/municipio
-        for col in [c for c in df.columns if c.lower() in ('departamento', 'municipio')]:
-            try:
-                df[col] = (
-                    df[col]
-                    .astype(str)
-                    .str.strip()
-                    .str.upper()
-                    .str.replace(r"\s+\(CT\)$", "", regex=True)
-                )
-            except Exception:
-                pass
-        # parseo de fecha
-        for col in ['fecha_hecho', 'fecha', 'FECHA HECHO']:
-            if col in df.columns:
-                df['fecha_hecho'] = pd.to_datetime(df[col], dayfirst=True, errors='coerce')
-                break
+        if df is not None and not df.empty and 'dia_semana' not in df.columns:
+            df['dia_semana'] = 0
 
     return delitos_sex, hurto, violencia
 
@@ -262,12 +299,21 @@ def prepare_riesgo_santander(delitos_sex, hurto, violencia):
     else:
         df_total['CANTIDAD'] = 1
 
-    # Derivar temporalidad
-    df_total.dropna(subset=['fecha_hecho'], inplace=True)
-    df_total['anio'] = df_total['fecha_hecho'].dt.year
-    df_total['mes'] = df_total['fecha_hecho'].dt.month
-    df_total['dia'] = df_total['fecha_hecho'].dt.day
-    df_total['dia_semana'] = df_total['fecha_hecho'].dt.weekday
+    # Derivar temporalidad, soportando entradas agregadas sin `fecha_hecho`
+    if 'fecha_hecho' in df_total.columns:
+        df_total.dropna(subset=['fecha_hecho'], inplace=True)
+        df_total['anio'] = df_total['fecha_hecho'].dt.year
+        df_total['mes'] = df_total['fecha_hecho'].dt.month
+        df_total['dia'] = df_total['fecha_hecho'].dt.day
+        df_total['dia_semana'] = df_total['fecha_hecho'].dt.weekday
+    else:
+        if 'anio' not in df_total.columns:
+            df_total['anio'] = 0
+        if 'mes' not in df_total.columns:
+            df_total['mes'] = 0
+        df_total['dia'] = 1
+        if 'dia_semana' not in df_total.columns:
+            df_total['dia_semana'] = 0
 
     # Reparar mojibake en texto clave
     for col in ['DEPARTAMENTO','MUNICIPIO','tipo_delito']:
