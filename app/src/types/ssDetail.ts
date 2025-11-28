@@ -1,0 +1,56 @@
+import { z } from "zod";
+
+// We're keeping a simple non-relational schema here.
+// IRL, you will have a schema for your data models.
+export const itemSchema = z.object({
+  // id: z.string(),
+  // // value: z.number().multipleOf(0.01),
+
+  // ssPayment: z.string(),
+  employeeId: z.string(),
+  employeeInfo: z.string(),
+  nvIng: z.boolean(),
+  nvRet: z.boolean(),
+  nvTde: z.boolean(),
+  nvTae: z.boolean(),
+  nvTdp: z.boolean(),
+  nvTap: z.boolean(),
+  nvVsp: z.boolean(),
+  nvCor: z.boolean(),
+  nvVst: z.boolean(),
+  nvSln: z.boolean(),
+  nvIge: z.boolean(),
+  nvLma: z.boolean(),
+  nvVac: z.boolean(),
+  nvAvp: z.boolean(),
+  nvVct: z.boolean(),
+  nvIrl: z.boolean(),
+  nvVip: z.boolean(),
+  pnCode: z.string(),
+  pnDay: z.number(),
+  pnIbc: z.number(),
+  pbContribution: z.number(),
+  slCode: z.string(),
+  slDay: z.number(),
+  slIbc: z.number(),
+  slContribution: z.number(),
+  ccCode: z.string(),
+  ccDay: z.number(),
+  ccIbc: z.number(),
+  ccContribution: z.number(),
+  rsCode: z.string(),
+  rsDay: z.number(),
+  rsIbc: z.number(),
+  rsContribution: z.number(),
+  pfDay: z.number(),
+  pfIbc: z.number(),
+  pfContribution: z.number(),
+  pfSena: z.boolean(),
+  total: z.number(),
+  isAffiliated: z.boolean(),
+  // employer: z.object({
+  //   name: z.string(),
+  // }),
+});
+
+export type Item = z.infer<typeof itemSchema>;
