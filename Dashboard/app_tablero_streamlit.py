@@ -14,9 +14,7 @@ import re
 
 st.set_page_config(layout="wide", page_title="Tablero Predictivo - Santander")
 
-st.title("🚨 Tablero Predictivo de Seguridad — Santander (Streamlit)")
-st.markdown("Este tablero integra la limpieza del `Untitled.ipynb` y reentrena un Decision Tree para predicciones de riesgo por municipio/cuadrícula.")
-
+st.title("🚨 Tablero Predictivo de Seguridad — Santander Digital Seguro SDS")
 
 @st.cache_data
 def load_local_csvs(base_path='.'):
@@ -480,7 +478,14 @@ def predict_grid(model, columns, N=2000, center=(7.1132, -73.1190), scale=0.05, 
 
 # Sidebar - fuente de datos
 st.sidebar.header('Fuente de datos')
-source = st.sidebar.radio('Selecciona fuente:', ('APIs (Policía Nacional)', 'Local CSVs (si existen)', 'Simulación'))
+# Toggle para mostrar/ocultar mensajes de diagnóstico en UI
+debug_logs = st.sidebar.checkbox('Mostrar logs y diagnósticos', False)
+# Por defecto, inicia en 'Simulación' para evitar llamadas pesadas a APIs durante el arranque en hosting
+source = st.sidebar.radio('Selecciona fuente:', (
+    'APIs (Policía Nacional)',
+    'Local CSVs (si existen)',
+    'Simulación'
+), index=2)
 
 delitos_sex, hurto, violencia = load_local_csvs(base_path='.')
 df_riesgo = pd.DataFrame()
@@ -491,33 +496,39 @@ f1 = None
 if source == 'Local CSVs (si existen)':
     df_riesgo = cargar_y_limpiar_local_fiel_notebook(delitos_sex, hurto, violencia)
     if not df_riesgo.empty:
-        st.sidebar.success(f'Encontrados datos locales: {df_riesgo.shape[0]} filas en df_riesgo')
+        if debug_logs:
+            st.sidebar.success(f'Encontrados datos locales: {df_riesgo.shape[0]} filas en df_riesgo')
         model, model_cols, f1 = train_model(df_riesgo)
-        if model is not None:
+        if model is not None and debug_logs:
             st.sidebar.success('Modelo entrenado localmente')
     else:
-        st.sidebar.warning('No se encontraron CSV locales; usando simulación')
+        if debug_logs:
+            st.sidebar.warning('No se encontraron CSV locales; usando simulación')
 
 elif source == 'APIs (Policía Nacional)':
-    st.sidebar.info('Consultando APIs de Policía Nacional... (puede tardar unos segundos)')
+    if debug_logs:
+        st.sidebar.info('Consultando APIs de Policía Nacional... (puede tardar unos segundos)')
     delitos_sex_api, hurto_api, violencia_api = cargar_y_preprocesar_datos_api()
     # Intentar preparar df_riesgo con datos obtenidos
     df_riesgo = prepare_riesgo_santander(delitos_sex_api, hurto_api, violencia_api)
     if not df_riesgo.empty:
-        st.sidebar.success(f'Datos API cargados: {df_riesgo.shape[0]} filas en df_riesgo')
-        try:
-            st.sidebar.write('Filas por API:',
-                             {'sexuales': int(len(delitos_sex_api)), 'hurto': int(len(hurto_api)), 'violencia': int(len(violencia_api))})
-        except Exception:
-            pass
+        if debug_logs:
+            st.sidebar.success(f'Datos API cargados: {df_riesgo.shape[0]} filas en df_riesgo')
+            try:
+                st.sidebar.write('Filas por API:',
+                                 {'sexuales': int(len(delitos_sex_api)), 'hurto': int(len(hurto_api)), 'violencia': int(len(violencia_api))})
+            except Exception:
+                pass
         model, model_cols, f1 = train_model(df_riesgo)
-        if model is not None:
+        if model is not None and debug_logs:
             st.sidebar.success('Modelo entrenado sobre datos API')
     else:
-        st.sidebar.warning('Las APIs no devolvieron datos útiles; usando simulación')
+        if debug_logs:
+            st.sidebar.warning('Las APIs no devolvieron datos útiles; usando simulación')
 
 if source == 'Simulación' or (df_riesgo.empty if not df_riesgo is None else True):
-    st.sidebar.info('Usando datos simulados para demo')
+    if debug_logs:
+        st.sidebar.info('Usando datos simulados para demo')
 
 # --- Añadir coordenadas de municipios a df_riesgo usando municipio_centroids.json ---
 centroids_file = 'municipio_centroids.json'
@@ -532,29 +543,48 @@ if df_riesgo is not None and not df_riesgo.empty:
             df_riesgo['longitud'] = df_riesgo['MUNICIPIO_NORM'].map(lambda k: cent_map.get(k, {}).get('lon'))
             # marcar cuántos municipios obtuvieron coordenadas
             n_with_coords = df_riesgo['latitud'].notna().sum()
-            st.sidebar.info(f'Municipios con coordenadas asociadas: {n_with_coords} / {df_riesgo.shape[0]} filas')
+            if debug_logs:
+                st.sidebar.info(f'Municipios con coordenadas asociadas: {n_with_coords} / {df_riesgo.shape[0]} filas')
         else:
-            st.sidebar.info('No se encontró `municipio_centroids.json`; se intentará usar GeoJSON durante visualización')
+            if debug_logs:
+                st.sidebar.info('No se encontró `municipio_centroids.json`; se intentará usar GeoJSON durante visualización')
     except Exception as e:
-        st.sidebar.warning(f'Error al anexar coordenadas a df_riesgo: {e}')
+        if debug_logs:
+            st.sidebar.warning(f'Error al anexar coordenadas a df_riesgo: {e}')
 
 # KPIs
 st.header('📊 Indicadores')
 col1, col2, col3 = st.columns(3)
 N_cells = st.sidebar.slider('Número de celdas a generar', 500, 20000, 2000, step=500)
 
+municipios_cubiertos = 0
+rango_temporal = 'N/A'
+total_hechos = 0
+if df_riesgo is not None and not df_riesgo.empty:
+    try:
+        municipios_cubiertos = int(df_riesgo['MUNICIPIO'].dropna().nunique()) if 'MUNICIPIO' in df_riesgo.columns else 0
+    except Exception:
+        municipios_cubiertos = 0
+    try:
+        total_hechos = int(pd.to_numeric(df_riesgo['CANTIDAD'], errors='coerce').fillna(0).sum()) if 'CANTIDAD' in df_riesgo.columns else 0
+    except Exception:
+        total_hechos = 0
+    try:
+        if 'anio' in df_riesgo.columns and 'mes' in df_riesgo.columns and df_riesgo['anio'].max() > 0:
+            a_min = int(df_riesgo['anio'].min())
+            a_max = int(df_riesgo['anio'].max())
+            m_min = int(df_riesgo[df_riesgo['anio'] == a_min]['mes'].min())
+            m_max = int(df_riesgo[df_riesgo['anio'] == a_max]['mes'].max())
+            rango_temporal = f"{a_min}-{m_min:02d} a {a_max}-{m_max:02d}"
+    except Exception:
+        rango_temporal = 'N/A'
+
 with col1:
-    st.metric('Celdas Generadas', N_cells)
+    st.metric('Municipios cubiertos', municipios_cubiertos)
 with col2:
-    if model is not None and f1 is not None:
-        st.metric('F1-score (test)', f'{f1:.3f}')
-    else:
-        st.metric('F1-score (test)', 'N/A')
+    st.metric('Rango temporal', rango_temporal)
 with col3:
-    if df_riesgo is not None and not df_riesgo.empty:
-        st.metric('Filas df_riesgo', df_riesgo.shape[0])
-    else:
-        st.metric('Filas df_riesgo', '0')
+    st.metric('Total hechos (CANTIDAD)', total_hechos)
 
 # Generar predicciones
 df_pred = predict_grid(model, model_cols, N=N_cells, df_riesgo=df_riesgo)
@@ -578,7 +608,8 @@ if os.path.exists(centroids_file):
             except Exception:
                 continue
     except Exception as e:
-        st.sidebar.warning(f'No se pudo leer {centroids_file}: {e}')
+        if debug_logs:
+            st.sidebar.warning(f'No se pudo leer {centroids_file}: {e}')
 
 # Si no hay predicciones, dejamos el df_pred_filtrado vacío
 if df_pred.empty:
@@ -588,22 +619,13 @@ else:
     # porque los datasets reales no contienen esa granularidad. Se deja generación
     # interna de franja en `predict_grid` para pruebas, pero no se usa como filtro.
 
-    # Modalidades (simuladas / pertenecientes a predicción)
     modalidad_opts = sorted(df_pred['modalidad'].unique())
-    modalidades_seleccionadas = st.sidebar.multiselect('Filtrar por Modalidad de Riesgo:', options=modalidad_opts, default=modalidad_opts)
-
     fuente_opts = []
     if df_riesgo is not None and not df_riesgo.empty and 'fuente' in df_riesgo.columns:
         fuente_opts = sorted(df_riesgo['fuente'].dropna().unique().tolist())
-    fuentes_seleccionadas = []
-    if fuente_opts:
-        fuentes_seleccionadas = st.sidebar.multiselect('Filtrar por Tipo de delito (fuente):', options=fuente_opts, default=fuente_opts)
     tipo_opts = []
-    tipo_seleccionados = []
     if df_riesgo is not None and not df_riesgo.empty and 'tipo_delito' in df_riesgo.columns:
         tipo_opts = sorted([t for t in df_riesgo['tipo_delito'].dropna().unique().tolist() if isinstance(t, str)])
-        if tipo_opts:
-            tipo_seleccionados = st.sidebar.multiselect('Filtrar por Tipo específico de delito:', options=tipo_opts, default=tipo_opts)
 
     # Filtros por Municipio: afecta principalmente la vista de municipios y el recorte
     # de la cuadrícula de predicción (se hace por bounding box alrededor de centroides)
@@ -611,9 +633,56 @@ else:
     if df_riesgo is not None and not df_riesgo.empty:
         municipio_opts = sorted(df_riesgo['MUNICIPIO'].dropna().unique().tolist())
     else:
-        # si no hay df_riesgo, habilitar los municipios desde los centroides
         municipio_opts = sorted([v.get('orig') for v in (mapping.values() if 'mapping' in locals() else []) if v.get('orig')])
-    municipios_seleccionados = st.sidebar.multiselect('Filtrar por Municipio (afecta mapa):', options=municipio_opts, default=municipio_opts)
+
+    if 'f_modalidades' not in st.session_state:
+        st.session_state['f_modalidades'] = modalidad_opts
+    if fuente_opts and 'f_fuentes' not in st.session_state:
+        st.session_state['f_fuentes'] = fuente_opts
+    if tipo_opts and 'f_tipos' not in st.session_state:
+        st.session_state['f_tipos'] = tipo_opts
+    if 'f_municipios' not in st.session_state:
+        st.session_state['f_municipios'] = municipio_opts
+    if 'f_anio' not in st.session_state:
+        st.session_state['f_anio'] = None
+    if 'f_mes' not in st.session_state:
+        st.session_state['f_mes'] = None
+
+    if st.sidebar.button('Reestablecer filtros'):
+        st.session_state['f_modalidades'] = modalidad_opts
+        if fuente_opts:
+            st.session_state['f_fuentes'] = fuente_opts
+        if tipo_opts:
+            st.session_state['f_tipos'] = tipo_opts
+        st.session_state['f_municipios'] = municipio_opts
+        st.session_state['f_anio'] = None
+        st.session_state['f_mes'] = None
+        try:
+            st.rerun()
+        except Exception:
+            st.experimental_rerun()
+
+    def _sanitize_default(opts, current):
+        try:
+            valid = [x for x in (current or []) if x in opts]
+            return valid if valid else opts
+        except Exception:
+            return opts
+    st.session_state['f_modalidades'] = _sanitize_default(modalidad_opts, st.session_state.get('f_modalidades', modalidad_opts))
+    if fuente_opts:
+        st.session_state['f_fuentes'] = _sanitize_default(fuente_opts, st.session_state.get('f_fuentes', fuente_opts))
+    if tipo_opts:
+        st.session_state['f_tipos'] = _sanitize_default(tipo_opts, st.session_state.get('f_tipos', tipo_opts))
+    st.session_state['f_municipios'] = _sanitize_default(municipio_opts, st.session_state.get('f_municipios', municipio_opts))
+
+    modalidades_seleccionadas = st.sidebar.multiselect('Filtrar por Modalidad de Riesgo:', options=modalidad_opts, default=st.session_state['f_modalidades'], key='f_modalidades')
+    fuentes_seleccionadas = []
+    if fuente_opts:
+        fuentes_seleccionadas = st.sidebar.multiselect('Filtrar por Tipo de delito (fuente):', options=fuente_opts, default=st.session_state['f_fuentes'], key='f_fuentes')
+    tipo_seleccionados = []
+    if tipo_opts:
+        tipo_seleccionados = st.sidebar.multiselect('Filtrar por Tipo específico de delito:', options=tipo_opts, default=st.session_state['f_tipos'], key='f_tipos')
+    municipios_seleccionados = st.sidebar.multiselect('Filtrar por Municipio (afecta mapa):', options=municipio_opts, default=st.session_state['f_municipios'], key='f_municipios')
 
     # Filtros temporales básicos: Año / Mes (siempre opcionales)
     anio_selected = None
@@ -622,24 +691,33 @@ else:
         anios = sorted(df_riesgo['anio'].dropna().unique().astype(int).tolist())
         meses = sorted(df_riesgo['mes'].dropna().unique().astype(int).tolist())
         if anios:
-            anio_selected = st.sidebar.selectbox('Año (opcional):', options=[None] + anios, index=0)
+            anio_opts = [None] + anios
+            if st.session_state.get('f_anio') not in anio_opts:
+                st.session_state['f_anio'] = None
+            anio_selected = st.sidebar.selectbox('Año (opcional):', options=anio_opts, index=anio_opts.index(st.session_state['f_anio']), key='f_anio')
         if meses:
-            mes_selected = st.sidebar.selectbox('Mes (opcional):', options=[None] + meses, index=0)
+            mes_opts = [None] + meses
+            if st.session_state.get('f_mes') not in mes_opts:
+                st.session_state['f_mes'] = None
+            mes_selected = st.sidebar.selectbox('Mes (opcional):', options=mes_opts, index=mes_opts.index(st.session_state['f_mes']), key='f_mes')
 
     # Aplicar filtros sobre las predicciones: modalidad + recorte espacial por municipio(s)
     df_pred_filtrado = df_pred[df_pred['modalidad'].isin(modalidades_seleccionadas)].copy()
 
     # DEBUG: información sobre filtrado para depuración en tiempo real
     try:
-        st.sidebar.markdown('**Debug filtros**')
-        st.sidebar.write('Modalidades seleccionadas:', modalidades_seleccionadas)
-        st.sidebar.write('Municipios seleccionados:', municipios_seleccionados[:20] if isinstance(municipios_seleccionados, (list, tuple)) else municipios_seleccionados)
-        st.sidebar.write('Filas df_pred antes:', int(df_pred.shape[0]), 'después:', int(df_pred_filtrado.shape[0]))
-        if not df_pred_filtrado.empty:
-            st.sidebar.write('Lat range:', float(df_pred_filtrado['latitud'].min()), '-', float(df_pred_filtrado['latitud'].max()))
-            st.sidebar.write('Lon range:', float(df_pred_filtrado['longitud'].min()), '-', float(df_pred_filtrado['longitud'].max()))
-        else:
-            st.sidebar.write('df_pred_filtrado está vacío tras aplicar filtros')
+        if debug_logs:
+            st.sidebar.markdown('**Debug filtros**')
+            st.sidebar.write('Modalidades seleccionadas:', modalidades_seleccionadas)
+            st.sidebar.write('Municipios seleccionados:', municipios_seleccionados[:20] if isinstance(municipios_seleccionados, (list, tuple)) else municipios_seleccionados)
+            st.sidebar.write('Filas df_pred antes:', int(df_pred.shape[0]), 'después:', int(df_pred_filtrado.shape[0]))
+            try:
+                st.sidebar.write('Lat range:', float(df_pred_filtrado['latitud'].min()), '-', float(df_pred_filtrado['latitud'].max()))
+                st.sidebar.write('Lon range:', float(df_pred_filtrado['longitud'].min()), '-', float(df_pred_filtrado['longitud'].max()))
+            except Exception:
+                pass
+            if df_pred_filtrado.empty:
+                st.sidebar.write('df_pred_filtrado está vacío tras aplicar filtros')
     except Exception:
         pass
 
@@ -666,6 +744,28 @@ else:
             df_pred_filtrado = df_pred_filtrado[combined]
 
     # No filtramos por franja_horaria aquí (desactivado temporalmente)
+
+    # Asignar MUNICIPIO aproximando por centroides más cercanos
+    if muni_centroids and not df_pred_filtrado.empty and 'latitud' in df_pred_filtrado.columns and 'longitud' in df_pred_filtrado.columns:
+        try:
+            keys = list(muni_centroids.keys())
+            arr_lat = np.array([muni_centroids[k][0] for k in keys])
+            arr_lon = np.array([muni_centroids[k][1] for k in keys])
+            names = []
+            for k in keys:
+                try:
+                    names.append(mapping.get(k, {}).get('orig', k))
+                except Exception:
+                    names.append(k)
+            names = np.array(names)
+
+            latp = df_pred_filtrado['latitud'].values
+            lonp = df_pred_filtrado['longitud'].values
+            dists = (latp[:, None] - arr_lat[None, :])**2 + (lonp[:, None] - arr_lon[None, :])**2
+            idx = dists.argmin(axis=1)
+            df_pred_filtrado['MUNICIPIO'] = names[idx]
+        except Exception:
+            pass
 
 st.header('🗺️ Mapa de Riesgo (simulado / modelo)')
 if df_pred.empty:
@@ -696,7 +796,8 @@ else:
             pass
     else:
         map_style = carto_styles.get(tema_mapa, carto_styles['Claro'])
-        st.sidebar.info('Sin token de Mapbox: usando base CARTO (libre)')
+        if debug_logs:
+            st.sidebar.info('Sin token de Mapbox: usando base CARTO (libre)')
     if paleta_mapa.startswith('YlOrRd'):
         color_range = [[255,255,178],[254,204,92],[253,141,60],[240,59,32],[189,0,38]]
     else:
@@ -719,10 +820,12 @@ else:
                 except Exception:
                     continue
         except Exception as e:
-            st.sidebar.warning(f'No se pudo leer {centroids_file}: {e}')
+            if debug_logs:
+                st.sidebar.warning(f'No se pudo leer {centroids_file}: {e}')
     else:
         # Si no existe el JSON, no usamos GeoJSON: avisar y continuar (el usuario pidió quitar GeoJSON)
-        st.sidebar.info('`municipio_centroids.json` no encontrado — no se usará GeoJSON; las coordenadas no estarán disponibles.')
+        if debug_logs:
+            st.sidebar.info('`municipio_centroids.json` no encontrado — no se usará GeoJSON; las coordenadas no estarán disponibles.')
 
     # Si tenemos df_riesgo, agregamos por MUNICIPIO y unimos con centroides
     if df_riesgo is not None and not df_riesgo.empty:
@@ -764,7 +867,7 @@ else:
             all_munis = set(df_riesgo['MUNICIPIO'].astype(str).map(normalize_name_for_merge))
             matched = set(df_muni['MUNICIPIO_NORM'].astype(str))
             unmatched = sorted(list(all_munis - matched))
-            if unmatched:
+            if unmatched and debug_logs:
                 st.sidebar.markdown('**Municipios no emparejados (ejemplos):**')
                 for u in unmatched[:20]:
                     st.sidebar.write(u)
@@ -830,9 +933,11 @@ else:
             )
             layers.insert(0, geojson_layer)
         except Exception:
-            st.sidebar.warning('No fue posible cargar polígonos de municipios')
+            if debug_logs:
+                st.sidebar.warning('No fue posible cargar polígonos de municipios')
     if not muni_centroids:
-        st.sidebar.info('No hay coordenadas de municipios disponibles; el mapa mostrará solo predicciones simuladas/por cuadrícula.')
+        if debug_logs:
+            st.sidebar.info('No hay coordenadas de municipios disponibles; el mapa mostrará solo predicciones simuladas/por cuadrícula.')
 
     view_state = pdk.ViewState(latitude=midpoint[0], longitude=midpoint[1], zoom=9, pitch=0)
     r = pdk.Deck(layers=layers, initial_view_state=view_state, map_style=map_style, tooltip={"text": "Riesgo: {intensidad_riesgo}\nMunicipio: {MUNICIPIO}"})
@@ -858,7 +963,32 @@ else:
             st.subheader(f'Serie temporal de {m_sel}')
             st.line_chart(ts.set_index('fecha')['CANTIDAD'])
 
-    st.download_button('Descargar predicciones filtradas', df_pred_filtrado.to_csv(index=False), 'predicciones_filtradas.csv', 'text/csv')
+    cols_export = [c for c in ['MUNICIPIO','modalidad','probabilidad_riesgo','intensidad_riesgo'] if c in df_pred_filtrado.columns]
+    export_df = df_pred_filtrado[cols_export].copy()
+    st.download_button('Descargar predicciones filtradas', export_df.to_csv(index=False), 'predicciones_filtradas.csv', 'text/csv')
+    st.caption(f"Filtradas: {int(export_df.shape[0])} / Totales: {int(df_pred.shape[0])}")
+    try:
+        df_pred_all_export = df_pred.copy()
+        if muni_centroids and 'latitud' in df_pred_all_export.columns and 'longitud' in df_pred_all_export.columns:
+            keys = list(muni_centroids.keys())
+            arr_lat = np.array([muni_centroids[k][0] for k in keys])
+            arr_lon = np.array([muni_centroids[k][1] for k in keys])
+            names = []
+            for k in keys:
+                try:
+                    names.append(mapping.get(k, {}).get('orig', k))
+                except Exception:
+                    names.append(k)
+            names = np.array(names)
+            latp = df_pred_all_export['latitud'].values
+            lonp = df_pred_all_export['longitud'].values
+            dists = (latp[:, None] - arr_lat[None, :])**2 + (lonp[:, None] - arr_lon[None, :])**2
+            idx = dists.argmin(axis=1)
+            df_pred_all_export['MUNICIPIO'] = names[idx]
+        cols_export_all = [c for c in ['MUNICIPIO','modalidad','probabilidad_riesgo','intensidad_riesgo'] if c in df_pred_all_export.columns]
+        st.download_button('Descargar todas las predicciones (sin filtros)', df_pred_all_export[cols_export_all].to_csv(index=False), 'predicciones_todas.csv', 'text/csv')
+    except Exception:
+        pass
 
     # Leyenda simple para intensidades
     st.sidebar.markdown('**Leyenda de Intensidad de Riesgo**')
@@ -870,11 +1000,13 @@ else:
         st.sidebar.markdown(f"<div style='display:flex;align-items:center'><div style='width:18px;height:12px;background:{color};margin-right:8px;border:1px solid #333'></div><span style='font-size:13px'>{label}</span></div>", unsafe_allow_html=True)
 
 st.markdown('---')
-st.subheader('Tabla de Predicciones (muestras)')
-st.dataframe(df_pred.head(200))
+if debug_logs:
+    st.subheader('Tabla de Predicciones (muestras)')
+    st.dataframe(df_pred.head(200))
 
-st.sidebar.markdown('---')
-st.sidebar.write('Archivos en el workspace:')
-for f in os.listdir('.'):
-    if f.lower().endswith('.csv') or f.lower().endswith('.geojson'):
-        st.sidebar.write(f)
+if debug_logs:
+    st.sidebar.markdown('---')
+    st.sidebar.write('Archivos en el workspace:')
+    for f in os.listdir('.'):
+        if f.lower().endswith('.csv') or f.lower().endswith('.geojson'):
+            st.sidebar.write(f)
