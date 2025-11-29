@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Home, PanelLeft } from "lucide-react";
+import { Home } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/router";
 
@@ -22,22 +22,80 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-30 flex h-24 items-center gap-4 border-b-2 border-primary bg-white px-6 pb-1">
+      {/* Mobile Menu */}
+      <Sheet>
+        <SheetTrigger asChild>
+          <Button size="icon" variant="outline" className="md:hidden">
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            </svg>
+            <span className="sr-only">Toggle Menu</span>
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="left" className="sm:max-w-xs">
+          <nav className="grid gap-6 text-lg font-medium">
+            <div className="flex flex-col items-center space-y-2">
+              <Image
+                src="/logoGS.png"
+                alt="Santander Seguro"
+                width={160}
+                height={50}
+                className="rounded-lg"
+              />
+              <div className="flex flex-col">
+                <span className="text-center text-lg font-bold text-gray-900">
+                  SafeSant
+                </span>
+              </div>
+            </div>
+            <Link
+              href="/"
+              className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground"
+            >
+              <Home className="h-5 w-5" />
+              Inicio
+            </Link>
+            <Link
+              href="/chatbot"
+              className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground"
+            >
+              <Home className="h-5 w-5" />
+              Gabi
+            </Link>
+            <Link
+              href="/contact"
+              className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground"
+            >
+              <Home className="h-5 w-5" />
+              Contáctenos
+            </Link>
+          </nav>
+        </SheetContent>
+      </Sheet>
+
       {/* Logo and Branding */}
       <div className="flex items-center space-x-3">
         <Link href="/">
           <Image
             src="/logoGS.png"
-            alt="Santander Digital Seguro"
+            alt="Santander Seguro"
             width={170}
             height={50}
             className="cursor-pointer rounded-lg"
           />
         </Link>
         <div className="flex flex-col">
-          <span className="text-xl font-bold text-gray-900">
-            Santander Digital Seguro
-          </span>
-          <span className="text-xs text-muted-foreground">SDS</span>
+          <span className="text-xl font-bold text-gray-900">SafeSant</span>
         </div>
       </div>
 
@@ -74,56 +132,6 @@ export function Header() {
           Contáctenos
         </Link>
       </nav>
-
-      {/* Mobile Menu */}
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button size="icon" variant="outline" className="md:hidden">
-            <PanelLeft className="h-5 w-5" />
-            <span className="sr-only">Toggle Menu</span>
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="sm:max-w-xs">
-          <nav className="grid gap-6 text-lg font-medium">
-            <div className="mb-6 flex items-center space-x-3">
-              <Image
-                src="/logoGS.png"
-                alt="Santander Digital Seguro"
-                width={40}
-                height={40}
-                className="rounded-lg"
-              />
-              <div className="flex flex-col">
-                <span className="text-lg font-bold text-gray-900">
-                  Santander Digital Seguro
-                </span>
-                <span className="text-xs text-muted-foreground">SDS</span>
-              </div>
-            </div>
-            <Link
-              href="/"
-              className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground"
-            >
-              <Home className="h-5 w-5" />
-              Inicio
-            </Link>
-            <Link
-              href="/chatbot"
-              className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground"
-            >
-              <Home className="h-5 w-5" />
-              Gabi
-            </Link>
-            <Link
-              href="/contact"
-              className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground"
-            >
-              <Home className="h-5 w-5" />
-              Contáctenos
-            </Link>
-          </nav>
-        </SheetContent>
-      </Sheet>
 
       <div className="ml-auto flex items-center space-x-4">
         {sessionData ? (

@@ -571,14 +571,18 @@ Data retrieved from Colombian crime database${
       }:
 ${JSON.stringify(processedData, null, 2)}
 
-Generate a comprehensive response in Spanish that answers the user's question based on the data. 
-Include statistics, trends, or insights from the data. If no data was found, explain this to the user.
+Generate a concise, direct response in Spanish that answers the user's question based on the data.
+Focus only on the key statistics and facts. Keep responses brief and to the point.
 
-Response should be in Spanish and professional tone.
+CRITICAL REQUIREMENTS:
+- Maximum 3-4 sentences
+- No introductory phrases or greetings
+- No closing remarks or signatures
+- Only include the most relevant statistics
+- Use bullet points for multiple data points if needed
+- If no data found, say "No se encontraron datos" briefly
 
-IMPORTANT: Do NOT include any signatures, closing remarks like "Atentamente", "Saludos", or any personal/entity names at the end of the response. Just provide the direct answer to the user's query.
-
-If there is a large amount of data, provide a summary with the most relevant statistics.
+Response must be in Spanish and professional but very concise.
 `;
 
       const finalResponse = await ai.models.generateContent({
@@ -698,8 +702,9 @@ If there is a large amount of data, provide a summary with the most relevant sta
                 <CardHeader className="pb-4">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Bot className="h-4 w-4" />
-                    Realiza preguntas sobre datos de criminalidad en Santander y
-                    sus municipios solamente
+                    Haz tus consultas sobre seguridad ciudadana y criminalidad
+                    en Santander. Te brindaré información clara y orientación
+                    segura
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -717,7 +722,7 @@ If there is a large amount of data, provide a summary with the most relevant sta
                             }
                           }
                         }}
-                        placeholder="Ejemplo: ¿Cuántos casos de hurto hubo en Bucaramanga en 2023?"
+                        placeholder="Ejemplo: ¿Cuántos casos de violencia intrafamiliar hay en Santander?"
                         className="min-h-[120px] resize-none"
                         disabled={loading}
                       />
